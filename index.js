@@ -7,6 +7,38 @@ class Observable {
         return this._subscribe(observer);
     }
 
+    static concat(...observables) {
+        return new Observable(function subscribe(observer) {
+            let myObservables = observables.slice();
+            let currentSub = null;
+            const processObservable = () => {
+                if (myObservables.length === 0) {
+                    observer.complete();
+                } else {
+                    let observable = observables.shift();
+                    currentSub = observable.subscribe({
+                        next(v) {
+                            observable.next(v);
+                        },
+                        error(err) {
+                            observable.error(err);
+                            currentSub.unsubscribe();
+                        },
+                        complete() {
+                            processObservable()
+                        }
+                    });
+                }
+            };
+            processObservable();
+            return {
+                unsubscribe() {
+                    currentSub.unsubscribe()
+                }
+            }
+        });
+    }
+
     static timeout(time) {
         return new Observable(function subscribe(observer) {
             const handle = setTimeout(function () {
@@ -16,6 +48,38 @@ class Observable {
             return {
                 unsubscribe() {
                     clearTimeout(handle)
+                }
+            }
+        });
+    }
+
+    static retry(num) {
+        const self = this;
+        return new Observable(function subscribe(observer) {
+            let currentSub = null;
+            const processRequest = (currentAttemptNumber) => {
+                currentSub = self.subscribe({
+                    next(v) {
+                        observer.next(v)
+                    },
+                    complete() {
+                        observer.complete();
+                    },
+                    error(err) {
+                        if (currentAttemptNumber === 0) {
+                            observer.error(err)
+                        } else {
+                            processRequest(currentAttemptNumber - 1);
+                        }
+                    }
+                })
+            };
+
+            processRequest(num);
+
+            return {
+                unsubscribe() {
+                    currentSub.unsubscribe()
                 }
             }
         });
